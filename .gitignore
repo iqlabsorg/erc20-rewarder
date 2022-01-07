@@ -7,3 +7,11 @@ typechain
 #Hardhat files
 cache
 artifacts
+
+.vscode/*
+!.vscode/settings.json.default
+!.vscode/launch.json.default
+!.vscode/extensions.json.default
+
+deployments/hardhat
+deployments/localhost

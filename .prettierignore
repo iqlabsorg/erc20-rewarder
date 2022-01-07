@@ -1,5 +1,9 @@
-node_modules
+gasReporterOutput.json
+export
+deployments
 artifacts
 cache
 coverage*
-gasReporterOutput.json
+node_modules
+package.json
+typechain
