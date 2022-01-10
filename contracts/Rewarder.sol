@@ -15,10 +15,23 @@ contract Rewarder is Ownable, IRewarder {
     uint64 internal immutable _deploymentBlock;
 
     // ------------- Storage ------------- //
-    bytes32 internal _merkleRoot;
-    address internal _vault;
-    IERC20 internal _tokenAddress;
-    Phase internal _currentPhase;
+
+    // --- Slot start --- //
+    bytes32 internal _merkleRoot; // 256 bits
+    // --- Slot end --- //
+
+    // --- Slot start --- //
+    address internal _vault; // 160 bits
+    Phase internal _currentPhase; // 8 bits
+    // 88 free bits
+    // --- Slot end --- //
+
+    // --- Slot start --- //
+    IERC20 internal _tokenAddress; // 160 bits
+    // 96 free bits
+    // --- Slot end --- //
+
+    mapping(address => uint256) internal _claimedClaims;
 
     modifier whenPhase(Phase expectedPhase) {
         if (expectedPhase != _currentPhase) {
@@ -46,9 +59,19 @@ contract Rewarder is Ownable, IRewarder {
         whenPhase(Phase.CLAIMING)
     {
         uint256 totalClaimAmount = 0;
+        uint256 newlyUnlockedClaims = 0;
+        uint256 currentlyUnlockedClaims = _claimedClaims[msg.sender];
         for (uint256 i = 0; i < proofs.length; i++) {
             bytes32[] memory proof = proofs[i];
             ClaimData memory claim = claims[i];
+
+            if (!(claim.unlocksAt >= block.timestamp)) {
+                revert ClaimNotYetUnlocked(claim);
+            }
+
+            if (currentlyUnlockedClaims & claim.index > 0) {
+                revert AlreadyClaimed(claim);
+            }
 
             bytes32 computedHash = calculateHash(claim);
             bool isValid = MerkleProof.verify(proof, _merkleRoot, computedHash);
@@ -58,10 +81,13 @@ contract Rewarder is Ownable, IRewarder {
             } else {
                 revert InvalidMerkleProof();
             }
+
+            newlyUnlockedClaims |= claim.index;
         }
 
         if (totalClaimAmount > 0) {
             _tokenAddress.transferFrom(_vault, msg.sender, totalClaimAmount);
+            _claimedClaims[msg.sender] |= newlyUnlockedClaims;
         }
     }
 
@@ -97,9 +123,13 @@ contract Rewarder is Ownable, IRewarder {
         return _vault;
     }
 
+    function getClaimedClaims(address claimer) external view override returns (uint256) {
+        return _claimedClaims[claimer];
+    }
+
     function calculateHash(ClaimData memory claim) public view override returns (bytes32) {
         bytes32 computedHash = keccak256(
-            abi.encodePacked(msg.sender, block.chainid, claim.amountToClaim, claim.unlocksAt)
+            abi.encodePacked(msg.sender, block.chainid, claim.amountToClaim, claim.unlocksAt, claim.index)
         );
         return computedHash;
     }

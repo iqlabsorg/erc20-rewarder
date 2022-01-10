@@ -14,6 +14,7 @@ interface IRewarder is IBlockAware {
     struct ClaimData {
         uint64 amountToClaim;
         uint256 unlocksAt;
+        uint256 index; // Unique per-user claim of the index, starts with `1`
     }
 
     // ------------- Events ------------- //
@@ -21,11 +22,14 @@ interface IRewarder is IBlockAware {
     event MerkleRootUpdated(bytes32 indexed newMerkleRoot);
     event TokenAddressUpdated(address newTokenAddress);
     event CurrentPhaseUpdated(Phase newPhase);
+    event Claimed(address indexed claimer, ClaimData claim);
 
     // ------------- Errors ------------- //
     error InvalidContractPhase(Phase expectedPhase, Phase currentPhase);
     error NotAnERC20Token();
     error InvalidMerkleProof();
+    error ClaimNotYetUnlocked(ClaimData claim);
+    error AlreadyClaimed(ClaimData claim);
 
     // ------------- Methods ------------- //
     function claimRewards(bytes32[][] calldata proofs, ClaimData[] memory claims) external;
@@ -45,4 +49,6 @@ interface IRewarder is IBlockAware {
     function getTokenAddress() external returns (address);
 
     function getVault() external returns (address);
+
+    function getClaimedClaims(address claimer) external returns (uint256);
 }
