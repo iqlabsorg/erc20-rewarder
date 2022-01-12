@@ -15,3 +15,5 @@ artifacts
 
 deployments/hardhat
 deployments/localhost
+
+yarn-error.log

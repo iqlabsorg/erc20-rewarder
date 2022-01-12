@@ -21,6 +21,10 @@ const config: HardhatUserConfig = {
   mocha: {
     bail: true,
   },
+  namedAccounts: {
+    deployer: 0,
+    vault: 1,
+  },
   solidity: {
     compilers: [
       {
