@@ -5,7 +5,6 @@ pragma solidity 0.8.11;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 
 import "./interfaces/IRewarder.sol";
 
@@ -31,7 +30,7 @@ contract Rewarder is Ownable, IRewarder {
     // 96 free bits
     // --- Slot end --- //
 
-    mapping(address => uint256) internal _claimedClaims;
+    mapping(address => uint256) internal _claimedRewards;
 
     modifier whenPhase(Phase expectedPhase) {
         if (expectedPhase != _currentPhase) {
@@ -53,22 +52,21 @@ contract Rewarder is Ownable, IRewarder {
         _currentPhase = Phase.CONFIGURING;
     }
 
-    function claimRewards(bytes32[][] calldata proofs, ClaimData[] memory claims)
+    function claimRewards(bytes32[][] calldata proofs, Reward[] memory claims)
         external
         override
         whenPhase(Phase.CLAIMING)
     {
         uint256 totalClaimAmount = 0;
         uint256 newlyUnlockedClaims = 0;
-        uint256 currentlyUnlockedClaims = _claimedClaims[msg.sender];
+        uint256 currentlyUnlockedClaims = _claimedRewards[msg.sender];
         for (uint256 i = 0; i < proofs.length; i++) {
             bytes32[] memory proof = proofs[i];
-            ClaimData memory claim = claims[i];
+            Reward memory claim = claims[i];
 
-            if (!(claim.unlocksAt >= block.timestamp)) {
-                revert ClaimNotYetUnlocked(claim);
+            if (claim.unlocksAt > block.timestamp) {
+                revert ClaimNotYetUnlocked(claim, block.timestamp);
             }
-
             if (currentlyUnlockedClaims & claim.index > 0) {
                 revert AlreadyClaimed(claim);
             }
@@ -87,16 +85,16 @@ contract Rewarder is Ownable, IRewarder {
 
         if (totalClaimAmount > 0) {
             _tokenAddress.transferFrom(_vault, msg.sender, totalClaimAmount);
-            _claimedClaims[msg.sender] |= newlyUnlockedClaims;
+            _claimedRewards[msg.sender] |= newlyUnlockedClaims;
         }
+    }
+
+    function setVault(address vault) external override onlyOwner {
+        _setVault(vault);
     }
 
     function enableClaiming() external override onlyOwner whenPhase(Phase.CONFIGURING) {
         _setPhase(Phase.CLAIMING);
-    }
-
-    function setVault(address vault) external override onlyOwner whenPhase(Phase.CONFIGURING) {
-        _setVault(vault);
     }
 
     function setTokenAddress(address tokenAddress) external override onlyOwner whenPhase(Phase.CONFIGURING) {
@@ -115,6 +113,10 @@ contract Rewarder is Ownable, IRewarder {
         return _currentPhase;
     }
 
+    function getMerkleRoot() external view override returns (bytes32) {
+        return _merkleRoot;
+    }
+
     function getDeploymentBlockNumber() external view override returns (uint64) {
         return _deploymentBlock;
     }
@@ -123,11 +125,11 @@ contract Rewarder is Ownable, IRewarder {
         return _vault;
     }
 
-    function getClaimedClaims(address claimer) external view override returns (uint256) {
-        return _claimedClaims[claimer];
+    function getClaimedRewards(address claimer) external view override returns (uint256) {
+        return _claimedRewards[claimer];
     }
 
-    function calculateHash(ClaimData memory claim) public view override returns (bytes32) {
+    function calculateHash(Reward memory claim) public view override returns (bytes32) {
         bytes32 computedHash = keccak256(
             abi.encodePacked(msg.sender, block.chainid, claim.amountToClaim, claim.unlocksAt, claim.index)
         );
@@ -154,10 +156,6 @@ contract Rewarder is Ownable, IRewarder {
     }
 
     function _setTokenAddress(address newTokenAddress) internal {
-        if (!IERC165(newTokenAddress).supportsInterface(type(IERC20).interfaceId)) {
-            revert NotAnERC20Token();
-        }
-
         _tokenAddress = IERC20(newTokenAddress);
 
         emit TokenAddressUpdated(newTokenAddress);
