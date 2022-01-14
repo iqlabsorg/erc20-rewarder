@@ -24,6 +24,7 @@ const config: HardhatUserConfig = {
   namedAccounts: {
     deployer: 0,
     vault: 1,
+    regularUser: 2, // for tests
   },
   solidity: {
     compilers: [

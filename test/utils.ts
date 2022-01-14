@@ -1,6 +1,7 @@
 import { expect } from 'chai';
 import { ethers } from 'hardhat';
 import { Block } from '@ethersproject/abstract-provider';
+import assert from 'assert';
 
 export const nextBlock = (timestamp = 0): Promise<unknown> =>
   ethers.provider.send('evm_mine', timestamp > 0 ? [timestamp] : []);
@@ -17,11 +18,12 @@ export const mineBlocks = async (blocks: number): Promise<void> => {
   }
 };
 
-export const forceNextTime = async (timeElapsed = 15): Promise<void> => {
-  await ethers.provider.send('evm_increaseTime', [timeElapsed]);
+export const forceNextTime = async (newTimestamp: number): Promise<void> => {
+  if (newTimestamp <= (await currentTime())) return;
+  await ethers.provider.send('evm_setNextBlockTimestamp', [newTimestamp]);
 };
 
-export const forceTime = async (timeElapsed = 15): Promise<void> => {
+export const forceTimeDelta = async (timeElapsed = 15): Promise<void> => {
   const blockBefore = await ethers.provider.getBlock('latest');
   await ethers.provider.send('evm_mine', [blockBefore.timestamp + timeElapsed]);
 };
@@ -50,10 +52,19 @@ export const autoMineOn = async (): Promise<void> => {
  * @param error Custom error name.
  * @param errorParams Custom error params.
  */
-export const expectError = async (tx: Promise<unknown>, error: string, errorParams: unknown[]): Promise<void> => {
-  await expect(tx).to.be.revertedWith(
-    `${error}(${errorParams.map(p => (typeof p === 'string' ? `"${p}"` : p)).join(', ')})`,
-  );
+export const expectError = async (tx: Promise<unknown>, error: string, errorParams?: unknown[]): Promise<void> => {
+  const formatter = (p: unknown): unknown => {
+    if (typeof p === 'string') {
+      return `"${p}"`;
+    } else if (typeof p === 'object') {
+      return `[${Object.values(p!)
+        .map(p => formatter(p))
+        .join(', ')}]`;
+    }
+    return p;
+  };
+  const formattedErrorParams = errorParams !== undefined ? errorParams.map(p => formatter(p)).join(', ') : '';
+  await expect(tx).to.be.revertedWith(`${error}(${formattedErrorParams})`);
 };
 
 export enum Phases {
