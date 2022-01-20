@@ -6,13 +6,8 @@ import "./IBlockAware.sol";
 
 interface IRewarder is IBlockAware {
     // ------------- Types ------------- //
-    enum Phase {
-        CONFIGURING,
-        CLAIMING
-    }
-
     struct Reward {
-        uint256 amountToClaim;
+        uint256 amount;
         uint256 unlocksAt;
         uint256 index; // Unique per-user claim of the index, starts with `1`
     }
@@ -20,32 +15,30 @@ interface IRewarder is IBlockAware {
     // ------------- Events ------------- //
     event VaultUpdated(address indexed oldVault, address indexed newVault);
     event MerkleRootUpdated(bytes32 indexed newMerkleRoot);
-    event TokenAddressUpdated(address newTokenAddress);
-    event CurrentPhaseUpdated(Phase newPhase);
+    event TokenUpdated(address newToken); // TODO remove `Address` from everywhere
+    event ClaimingEnabled();
     event Claimed(address indexed claimer, Reward claim);
 
     // ------------- Errors ------------- //
-    error InvalidContractPhase(Phase expectedPhase, Phase currentPhase);
+    error ClaimingNotYetEnabled();
     error InvalidMerkleProof();
-    error ClaimNotYetUnlocked(Reward claim, uint256 currentBlockTimestamp);
+    error ClaimNotYetUnlocked(Reward claim); // TODO remove block timestamp param
     error AlreadyClaimed(Reward claim);
 
     // ------------- Methods ------------- //
-    function claimRewards(bytes32[][] calldata proofs, Reward[] memory claims) external;
+    function claim(bytes32[][] calldata proofs, Reward[] memory claims) external;
 
     function enableClaiming() external;
 
-    function calculateHash(Reward memory claim) external returns (bytes32);
-
     function setMerkleRoot(bytes32 merkleRoot) external;
 
-    function setTokenAddress(address tokenAddress) external;
+    function setToken(address token) external;
 
     function setVault(address vault) external;
 
-    function getCurrentPhase() external returns (Phase);
+    function isClaimingEnabled() external returns (bool);
 
-    function getTokenAddress() external returns (address);
+    function getToken() external returns (address);
 
     function getMerkleRoot() external view returns (bytes32);
 

@@ -21,20 +21,20 @@ contract Rewarder is Ownable, IRewarder {
 
     // --- Slot start --- //
     address internal _vault; // 160 bits
-    Phase internal _currentPhase; // 8 bits
+    bool internal _claimingEnabled; // 8 bits
     // 88 free bits
     // --- Slot end --- //
 
     // --- Slot start --- //
-    IERC20 internal _tokenAddress; // 160 bits
+    IERC20 internal _token; // 160 bits
     // 96 free bits
     // --- Slot end --- //
 
     mapping(address => uint256) internal _claimedRewards;
 
-    modifier whenPhase(Phase expectedPhase) {
-        if (expectedPhase != _currentPhase) {
-            revert InvalidContractPhase(expectedPhase, _currentPhase);
+    modifier whenClaimingEnabled() {
+        if (!_claimingEnabled) {
+            revert ClaimingNotYetEnabled();
         }
         _;
     }
@@ -42,21 +42,17 @@ contract Rewarder is Ownable, IRewarder {
     constructor(
         bytes32 merkleRoot,
         address vault,
-        address tokenAddress
+        address token
     ) Ownable() {
         _setVault(vault);
         _setMerkleRoot(merkleRoot);
-        _setTokenAddress(tokenAddress);
+        _setToken(token);
 
         _deploymentBlock = uint64(block.number);
-        _currentPhase = Phase.CONFIGURING;
     }
 
-    function claimRewards(bytes32[][] calldata proofs, Reward[] memory claims)
-        external
-        override
-        whenPhase(Phase.CLAIMING)
-    {
+    function claim(bytes32[][] calldata proofs, Reward[] memory claims) external override whenClaimingEnabled {
+        // TODO make sure that proofs and claims length is matvhing
         uint256 totalClaimAmount = 0;
         uint256 newlyUnlockedClaims = 0;
         uint256 currentlyUnlockedClaims = _claimedRewards[msg.sender];
@@ -65,27 +61,26 @@ contract Rewarder is Ownable, IRewarder {
             Reward memory claim = claims[i];
 
             if (claim.unlocksAt > block.timestamp) {
-                revert ClaimNotYetUnlocked(claim, block.timestamp);
+                revert ClaimNotYetUnlocked(claim);
             }
-            if (currentlyUnlockedClaims & claim.index > 0) {
+            if (currentlyUnlockedClaims & claim.index != 0) {
                 revert AlreadyClaimed(claim);
             }
 
             bytes32 computedHash = calculateHash(claim);
             bool isValid = MerkleProof.verify(proof, _merkleRoot, computedHash);
 
-            if (isValid) {
-                totalClaimAmount += claim.amountToClaim;
-            } else {
+            if (!isValid) {
                 revert InvalidMerkleProof();
             }
-
             newlyUnlockedClaims |= claim.index;
+
+            emit Claimed(msg.sender, claim);
         }
 
         if (totalClaimAmount > 0) {
-            _tokenAddress.transferFrom(_vault, msg.sender, totalClaimAmount);
             _claimedRewards[msg.sender] |= newlyUnlockedClaims;
+            _token.transferFrom(_vault, msg.sender, totalClaimAmount);
         }
     }
 
@@ -93,24 +88,26 @@ contract Rewarder is Ownable, IRewarder {
         _setVault(vault);
     }
 
-    function enableClaiming() external override onlyOwner whenPhase(Phase.CONFIGURING) {
-        _setPhase(Phase.CLAIMING);
+    function enableClaiming() external override onlyOwner {
+        _claimingEnabled = true;
+
+        emit ClaimingEnabled();
     }
 
-    function setTokenAddress(address tokenAddress) external override onlyOwner whenPhase(Phase.CONFIGURING) {
-        _setTokenAddress(tokenAddress);
+    function setToken(address token) external override onlyOwner {
+        _setToken(token);
     }
 
-    function setMerkleRoot(bytes32 merkleRoot) external override onlyOwner whenPhase(Phase.CONFIGURING) {
+    function setMerkleRoot(bytes32 merkleRoot) external override onlyOwner {
         _setMerkleRoot(merkleRoot);
     }
 
-    function getTokenAddress() external view override returns (address) {
-        return address(_tokenAddress);
+    function getToken() external view override returns (address) {
+        return address(_token);
     }
 
-    function getCurrentPhase() external view override returns (Phase) {
-        return _currentPhase;
+    function isClaimingEnabled() external view override returns (bool) {
+        return _claimingEnabled;
     }
 
     function getMerkleRoot() external view override returns (bytes32) {
@@ -129,11 +126,8 @@ contract Rewarder is Ownable, IRewarder {
         return _claimedRewards[claimer];
     }
 
-    function calculateHash(Reward memory claim) public view override returns (bytes32) {
-        bytes32 computedHash = keccak256(
-            abi.encodePacked(msg.sender, block.chainid, claim.amountToClaim, claim.unlocksAt, claim.index)
-        );
-        return computedHash;
+    function calculateHash(Reward memory claim) internal view returns (bytes32) {
+        return keccak256(abi.encodePacked(msg.sender, block.chainid, claim.amount, claim.unlocksAt, claim.index));
     }
 
     // ---- Internal setters ---- //
@@ -144,20 +138,15 @@ contract Rewarder is Ownable, IRewarder {
         emit VaultUpdated(oldVault, newVault);
     }
 
-    function _setPhase(Phase newPhase) internal {
-        _currentPhase = newPhase;
-
-        emit CurrentPhaseUpdated(newPhase);
-    }
-
     function _setMerkleRoot(bytes32 newMerkleRoot) internal {
         _merkleRoot = newMerkleRoot;
+
         emit MerkleRootUpdated(newMerkleRoot);
     }
 
-    function _setTokenAddress(address newTokenAddress) internal {
-        _tokenAddress = IERC20(newTokenAddress);
+    function _setToken(address newToken) internal {
+        _token = IERC20(newToken);
 
-        emit TokenAddressUpdated(newTokenAddress);
+        emit TokenUpdated(newToken);
     }
 }
