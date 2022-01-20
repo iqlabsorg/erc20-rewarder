@@ -51,37 +51,28 @@ contract Rewarder is Ownable, IRewarder {
         _deploymentBlock = uint64(block.number);
     }
 
-    function claim(bytes32[][] calldata proofs, Reward[] memory claims) external override whenClaimingEnabled {
-        // TODO make sure that proofs and claims length is matvhing
-        uint256 totalClaimAmount = 0;
-        uint256 newlyUnlockedClaims = 0;
-        uint256 currentlyUnlockedClaims = _claimedRewards[msg.sender];
-        for (uint256 i = 0; i < proofs.length; i++) {
-            bytes32[] memory proof = proofs[i];
-            Reward memory claim = claims[i];
-
-            if (claim.unlocksAt > block.timestamp) {
-                revert ClaimNotYetUnlocked(claim);
-            }
-            if (currentlyUnlockedClaims & claim.index != 0) {
-                revert AlreadyClaimed(claim);
-            }
-
-            bytes32 computedHash = calculateHash(claim);
-            bool isValid = MerkleProof.verify(proof, _merkleRoot, computedHash);
-
-            if (!isValid) {
-                revert InvalidMerkleProof();
-            }
-            newlyUnlockedClaims |= claim.index;
-
-            emit Claimed(msg.sender, claim);
+    function claim(bytes32[] calldata proof, Reward memory claimData) external override whenClaimingEnabled {
+        uint256 alreadyClaimed = _claimedRewards[msg.sender];
+        uint256 toClaimThisTime = alreadyClaimed - claimData.amount;
+        if (toClaimThisTime == 0) {
+            revert AlreadyClaimed(claimData);
         }
 
-        if (totalClaimAmount > 0) {
-            _claimedRewards[msg.sender] |= newlyUnlockedClaims;
-            _token.transferFrom(_vault, msg.sender, totalClaimAmount);
+        if (claimData.unlocksAt > block.timestamp) {
+            revert ClaimNotYetUnlocked(claimData);
         }
+
+        bytes32 computedHash = calculateHash(claimData);
+        bool isValid = MerkleProof.verify(proof, _merkleRoot, computedHash);
+
+        if (!isValid) {
+            revert InvalidMerkleProof();
+        }
+
+        _claimedRewards[msg.sender] += toClaimThisTime;
+        _token.transferFrom(_vault, msg.sender, toClaimThisTime);
+
+        emit Claimed(msg.sender, claimData.unlocksAt, toClaimThisTime);
     }
 
     function setVault(address vault) external override onlyOwner {
@@ -122,12 +113,12 @@ contract Rewarder is Ownable, IRewarder {
         return _vault;
     }
 
-    function getClaimedRewards(address claimer) external view override returns (uint256) {
+    function getCurrentlyClaimedAmount(address claimer) external view override returns (uint256) {
         return _claimedRewards[claimer];
     }
 
     function calculateHash(Reward memory claim) internal view returns (bytes32) {
-        return keccak256(abi.encodePacked(msg.sender, block.chainid, claim.amount, claim.unlocksAt, claim.index));
+        return keccak256(abi.encodePacked(msg.sender, block.chainid, claim.amount, claim.unlocksAt));
     }
 
     // ---- Internal setters ---- //

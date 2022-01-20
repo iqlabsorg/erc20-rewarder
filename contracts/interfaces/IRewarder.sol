@@ -7,9 +7,8 @@ import "./IBlockAware.sol";
 interface IRewarder is IBlockAware {
     // ------------- Types ------------- //
     struct Reward {
-        uint256 amount;
+        uint256 amount; // Always increasing.
         uint256 unlocksAt;
-        uint256 index; // Unique per-user claim of the index, starts with `1`
     }
 
     // ------------- Events ------------- //
@@ -17,7 +16,7 @@ interface IRewarder is IBlockAware {
     event MerkleRootUpdated(bytes32 indexed newMerkleRoot);
     event TokenUpdated(address newToken); // TODO remove `Address` from everywhere
     event ClaimingEnabled();
-    event Claimed(address indexed claimer, Reward claim);
+    event Claimed(address indexed claimer, uint256 indexed unlockTime, uint256 indexed amountClaimed);
 
     // ------------- Errors ------------- //
     error ClaimingNotYetEnabled();
@@ -26,7 +25,7 @@ interface IRewarder is IBlockAware {
     error AlreadyClaimed(Reward claim);
 
     // ------------- Methods ------------- //
-    function claim(bytes32[][] calldata proofs, Reward[] memory claims) external;
+    function claim(bytes32[] calldata proof, Reward memory claimData) external;
 
     function enableClaiming() external;
 
@@ -44,5 +43,5 @@ interface IRewarder is IBlockAware {
 
     function getVault() external returns (address);
 
-    function getClaimedRewards(address claimer) external returns (uint256);
+    function getCurrentlyClaimedAmount(address claimer) external returns (uint256);
 }
