@@ -39,6 +39,13 @@ contract Rewarder is Ownable, IRewarder {
         _;
     }
 
+    modifier whenClaimingDisabled() {
+        if (_claimingEnabled) {
+            revert ClaimingAlreadyEnabled();
+        }
+        _;
+    }
+
     constructor(
         bytes32 merkleRoot,
         address vault,
@@ -53,10 +60,12 @@ contract Rewarder is Ownable, IRewarder {
 
     function claim(bytes32[] calldata proof, Reward memory claimData) external override whenClaimingEnabled {
         uint256 alreadyClaimed = _claimedRewards[msg.sender];
-        uint256 toClaimThisTime = alreadyClaimed - claimData.amount;
-        if (toClaimThisTime == 0) {
-            revert AlreadyClaimed(claimData);
+
+        if (alreadyClaimed >= claimData.amount) {
+            revert NothingToClaim();
         }
+
+        uint256 toClaimThisTime = claimData.amount - alreadyClaimed;
 
         if (claimData.unlocksAt > block.timestamp) {
             revert ClaimNotYetUnlocked(claimData);
@@ -79,17 +88,17 @@ contract Rewarder is Ownable, IRewarder {
         _setVault(vault);
     }
 
-    function enableClaiming() external override onlyOwner {
+    function enableClaiming() external override onlyOwner whenClaimingDisabled {
         _claimingEnabled = true;
 
         emit ClaimingEnabled();
     }
 
-    function setToken(address token) external override onlyOwner {
+    function setToken(address token) external override onlyOwner whenClaimingDisabled {
         _setToken(token);
     }
 
-    function setMerkleRoot(bytes32 merkleRoot) external override onlyOwner {
+    function setMerkleRoot(bytes32 merkleRoot) external override onlyOwner whenClaimingDisabled {
         _setMerkleRoot(merkleRoot);
     }
 
@@ -117,8 +126,8 @@ contract Rewarder is Ownable, IRewarder {
         return _claimedRewards[claimer];
     }
 
-    function calculateHash(Reward memory claim) internal view returns (bytes32) {
-        return keccak256(abi.encodePacked(msg.sender, block.chainid, claim.amount, claim.unlocksAt));
+    function calculateHash(Reward memory claimData) internal view virtual returns (bytes32) {
+        return keccak256(abi.encodePacked(msg.sender, block.chainid, claimData.amount, claimData.unlocksAt));
     }
 
     // ---- Internal setters ---- //

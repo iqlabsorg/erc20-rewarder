@@ -1,14 +1,8 @@
 import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers';
 import chai, { expect } from 'chai';
 import { ethers, network } from 'hardhat';
-import {
-  constructRewardsMerkleTree,
-  ClaimProofMapping,
-  ClaimWithAddressAndIndex,
-  constructHash,
-  ClaimWithAddress,
-} from '../scripts/merkle-tree';
-import { ERC20Mock, ERC20Mock__factory, Rewarder, Rewarder__factory } from '../typechain';
+import { constructRewardsMerkleTree, ClaimProofMapping, constructHash, ClaimWithAddress } from '../scripts/merkle-tree';
+import { ERC20Mock, ERC20Mock__factory, HasherExposer__factory, Rewarder, Rewarder__factory } from '../typechain';
 import chaiAsPromised from 'chai-as-promised';
 import { solidity } from 'ethereum-waffle';
 import { bufferToHex, keccakFromString, toChecksumAddress } from 'ethereumjs-util';
@@ -16,6 +10,7 @@ import { currentBlock, currentTime, expectError, forceNextTime, Phases } from '.
 import { Block } from '@ethersproject/abstract-provider';
 import MerkleTree from 'merkletreejs';
 import { BigNumber } from 'ethers';
+import { parseEther } from 'ethers/lib/utils';
 
 // inject domain specific assertion methods
 chai.use(solidity);
@@ -23,6 +18,8 @@ chai.use(chaiAsPromised);
 
 describe('Rewarder', function () {
   let deployer: SignerWithAddress;
+  let stranger1: SignerWithAddress;
+  let stranger2: SignerWithAddress;
   let vault: SignerWithAddress;
   let chainId: number;
   let token: ERC20Mock;
@@ -30,14 +27,15 @@ describe('Rewarder', function () {
   beforeEach(async () => {
     deployer = await ethers.getNamedSigner('deployer');
     vault = await ethers.getNamedSigner('vault');
+    [stranger1, stranger2] = await ethers.getUnnamedSigners();
     chainId = network.config.chainId!;
-    token = await new ERC20Mock__factory(vault).deploy('PRQ', 'PRQ', 18, 100000000n);
+    token = await new ERC20Mock__factory(vault).deploy('PRQ', 'PRQ', 18, parseEther('1000000000000000000'));
   });
 
   it('can be deployed', async () => {
     const time = await currentTime();
-    const inputs: Array<ClaimWithAddressAndIndex> = [
-      { address: deployer.address, amountToClaim: 100000, unlocksAt: time, index: BigNumber.from(1) },
+    const inputs: Array<ClaimWithAddress> = [
+      { address: deployer.address, amount: BigNumber.from(100000), unlocksAt: time },
     ];
     const [tree] = constructRewardsMerkleTree(inputs, chainId);
 
@@ -53,8 +51,12 @@ describe('Rewarder', function () {
       timeBeforeDeployment = await currentTime();
       blockBeforeDeployment = await currentBlock();
 
-      const inputs: Array<ClaimWithAddressAndIndex> = [
-        { address: deployer.address, amountToClaim: 100000, unlocksAt: timeBeforeDeployment, index: BigNumber.from(1) },
+      const inputs: Array<ClaimWithAddress> = [
+        {
+          address: stranger1.address,
+          amount: BigNumber.from(100000),
+          unlocksAt: timeBeforeDeployment,
+        },
       ];
       [merkleTree] = constructRewardsMerkleTree(inputs, chainId);
 
@@ -66,11 +68,11 @@ describe('Rewarder', function () {
     });
 
     it('has the correct phase after deployment', async () => {
-      await expect(rewarder.getCurrentPhase()).to.eventually.equal(0);
+      await expect(rewarder.isClaimingEnabled()).to.eventually.equal(false);
     });
 
     it('has the correct token address', async () => {
-      await expect(rewarder.getTokenAddress()).to.eventually.equal(token.address);
+      await expect(rewarder.getToken()).to.eventually.equal(token.address);
     });
 
     it('has the correct vault', async () => {
@@ -78,7 +80,7 @@ describe('Rewarder', function () {
     });
 
     it('has the correct default claimed rewards', async () => {
-      await expect(rewarder.getClaimedRewards(deployer.address)).to.eventually.equal(0n);
+      await expect(rewarder.getCurrentlyClaimedAmount(stranger1.address)).to.eventually.equal(0n);
     });
 
     it('has the correct merkle root', async () => {
@@ -86,85 +88,85 @@ describe('Rewarder', function () {
     });
 
     it('performs same hashing calculation as off-chain', async () => {
+      const hashExposer = await new HasherExposer__factory(stranger1).deploy(
+        merkleTree.getHexRoot(),
+        vault.address,
+        token.address,
+      );
       const sampleClaim = {
-        amountToClaim: 21341,
+        amount: BigNumber.from(21341),
         unlocksAt: 515151,
-        index: BigNumber.from(1),
       };
 
-      const preComputedHash = bufferToHex(constructHash({ ...sampleClaim, address: deployer.address }, chainId));
+      const preComputedHash = bufferToHex(
+        constructHash(deployer.address, sampleClaim.amount, sampleClaim.unlocksAt, chainId),
+      );
 
-      await expect(rewarder.connect(deployer).calculateHash(sampleClaim)).to.eventually.equal(preComputedHash);
+      await expect(hashExposer.connect(deployer).calculateHashPub(sampleClaim)).to.eventually.equal(preComputedHash);
     });
   });
 
   describe('Merkle tree gen validation', () => {
-    const amountToClaim = 100;
+    const amount = parseEther('100');
     const unlocksAt = 100;
 
-    it('throws when input more than 256 entries', () => {
+    it('throws unlock time does not change', () => {
       const inputs: Array<ClaimWithAddress> = [];
-      for (const address of [deployer.address, vault.address]) {
-        for (let index = 1; index <= 257; index++) {
-          inputs.push({ address, amountToClaim, unlocksAt });
-        }
+      const claimAmount = 4;
+      for (let index = 0; index < claimAmount; index++) {
+        inputs.push({ address: deployer.address, amount, unlocksAt });
       }
 
-      expect(() => constructRewardsMerkleTree(inputs, chainId)).to.throw('value out of range');
+      expect(() => constructRewardsMerkleTree(inputs, chainId)).to.throw('Duplicate unlock period for user');
     });
 
-    it('does not throw when input equal to 256 entries', () => {
+    it('makes all subsequent claims larger than the previous one', () => {
       const inputs: Array<ClaimWithAddress> = [];
-      for (const address of [deployer.address, vault.address]) {
-        for (let index = 1; index <= 256; index++) {
-          inputs.push({ address, amountToClaim, unlocksAt });
-        }
-      }
-
-      expect(() => constructRewardsMerkleTree(inputs, chainId)).to.not.throw();
-    });
-
-    it('makes all indexes unique', () => {
-      const inputs: Array<ClaimWithAddress> = [];
-      const claimsPerUser = 256;
-      for (const address of [deployer.address, vault.address]) {
-        for (let index = 1; index <= 256; index++) {
-          inputs.push({ address, amountToClaim, unlocksAt });
+      const claimsPerUser = 3;
+      const toGenerateFor = [deployer.address, vault.address];
+      for (const address of toGenerateFor) {
+        for (let index = 0; index < claimsPerUser; index++) {
+          inputs.push({ address, amount, unlocksAt: unlocksAt * (index + 1) });
         }
       }
 
       const [, mapping] = constructRewardsMerkleTree(inputs, chainId);
+      for (const address of toGenerateFor) {
+        const items = mapping.get(address.toLowerCase())!;
 
-      for (const address of [deployer.address, vault.address]) {
-        const rewards = mapping[address.toLowerCase()];
-        expect(rewards.length).to.equal(claimsPerUser);
+        // Assert valid unlock periods
+        expect(items[0].claimData.unlocksAt).to.equal(unlocksAt * 1);
+        expect(items[1].claimData.unlocksAt).to.equal(unlocksAt * 2);
+        expect(items[2].claimData.unlocksAt).to.equal(unlocksAt * 3);
 
-        const indexSet = new Set(rewards.map(e => e.claimData.index.toString()));
-        expect(indexSet.size).to.equal(claimsPerUser);
+        // Assert valid amounts
+        expect(items[0].claimData.amount).to.equal(amount.mul(1));
+        expect(items[1].claimData.amount).to.equal(amount.mul(2));
+        expect(items[2].claimData.amount).to.equal(amount.mul(3));
       }
     });
 
     it('throws on invalid address', () => {
       const invalidAddress = deployer.address.replace('0', 'z');
       const inputs: Array<ClaimWithAddress> = [
-        { address: deployer.address.replace('0', 'z'), amountToClaim, unlocksAt },
-        { address: vault.address, amountToClaim, unlocksAt },
+        { address: deployer.address.replace('0', 'z'), amount, unlocksAt },
+        { address: vault.address, amount, unlocksAt: unlocksAt + 1 },
       ];
       expect(() => constructRewardsMerkleTree(inputs, chainId)).to.throw(`${invalidAddress} is not a valid address`);
     });
 
     it('creates lowercased address from checksummed one', () => {
       const deployerChecksummed = toChecksumAddress(deployer.address);
-      const inputs: Array<ClaimWithAddress> = [{ address: deployerChecksummed, amountToClaim, unlocksAt }];
+      const inputs: Array<ClaimWithAddress> = [{ address: deployerChecksummed, amount, unlocksAt }];
       const [, mapping] = constructRewardsMerkleTree(inputs, chainId);
 
-      expect(mapping[deployerChecksummed]).to.equal(undefined);
-      expect(mapping[deployerChecksummed.toLowerCase()]).to.not.equal(undefined);
+      expect(mapping.get(deployerChecksummed)).to.equal(undefined);
+      expect(mapping.get(deployerChecksummed.toLowerCase())).to.not.equal(undefined);
     });
   });
 
   describe('When successful deployment', () => {
-    const amountToClaim = 100000;
+    const amount = parseEther('1');
 
     let rewarder: Rewarder;
     let timeBeforeDeployment: number;
@@ -183,7 +185,7 @@ describe('Rewarder', function () {
       for (let index = 0; index < totalClaimsPerUser; index++) {
         const claimsForUser = usersThatCanClaim.map(e => ({
           address: e.address,
-          amountToClaim,
+          amount,
           unlocksAt: claimDelta * (index + 1) + timeBeforeDeployment,
         }));
 
@@ -200,13 +202,11 @@ describe('Rewarder', function () {
     describe('While configuring', () => {
       it('cannot claim while phase not in claiming mode', async () => {
         const claimer = usersThatCanClaim[0];
-        const claim = claimProofMapping[claimer.address.toLowerCase()][0];
+        const claim = claimProofMapping.get(claimer.address.toLowerCase())![0];
 
         await forceNextTime(claim.claimData.unlocksAt);
-        await expectError(
-          rewarder.connect(claimer).claimRewards([claim.merkleProof], [claim.claimData]),
-          'InvalidContractPhase',
-          [Phases.CLAIMING, Phases.CONFIGURING],
+        await expect(rewarder.connect(claimer).claim(claim.merkleProof, claim.claimData)).to.be.revertedWithError(
+          'ClaimingNotYetEnabled',
         );
       });
 
@@ -225,15 +225,15 @@ describe('Rewarder', function () {
       });
 
       it('can change token address', async () => {
-        await rewarder.connect(deployer).setTokenAddress(ethers.constants.AddressZero);
+        await rewarder.connect(deployer).setToken(ethers.constants.AddressZero);
 
-        await expect(rewarder.getTokenAddress()).to.eventually.equal(ethers.constants.AddressZero);
+        await expect(rewarder.getToken()).to.eventually.equal(ethers.constants.AddressZero);
       });
 
       it('can enable claiming', async () => {
         await rewarder.connect(deployer).enableClaiming();
 
-        await expect(rewarder.getCurrentPhase()).to.eventually.equal(Phases.CLAIMING);
+        await expect(rewarder.isClaimingEnabled()).to.eventually.equal(true);
       });
 
       describe('While claiming', () => {
@@ -244,25 +244,19 @@ describe('Rewarder', function () {
         it('cannot change merkle root', async () => {
           const newMerkleRoot = bufferToHex(keccakFromString('the new seed'));
 
-          await expectError(rewarder.connect(deployer).setMerkleRoot(newMerkleRoot), 'InvalidContractPhase', [
-            Phases.CONFIGURING,
-            Phases.CLAIMING,
-          ]);
+          await expect(rewarder.connect(deployer).setMerkleRoot(newMerkleRoot)).to.be.revertedWithError(
+            'ClaimingAlreadyEnabled',
+          );
         });
 
         it('cannot change token', async () => {
-          await expectError(
-            rewarder.connect(deployer).setTokenAddress(ethers.constants.AddressZero),
-            'InvalidContractPhase',
-            [Phases.CONFIGURING, Phases.CLAIMING],
+          await expect(rewarder.connect(deployer).setToken(ethers.constants.AddressZero)).to.be.revertedWithError(
+            'ClaimingAlreadyEnabled',
           );
         });
 
         it('cannot enable claiming again', async () => {
-          await expectError(rewarder.connect(deployer).enableClaiming(), 'InvalidContractPhase', [
-            Phases.CONFIGURING,
-            Phases.CLAIMING,
-          ]);
+          await expect(rewarder.connect(deployer).enableClaiming()).to.be.revertedWithError('ClaimingAlreadyEnabled');
         });
 
         it('can still change vault', async () => {
@@ -273,29 +267,13 @@ describe('Rewarder', function () {
 
         it('can claim when timestamp has passed', async () => {
           const claimer = usersThatCanClaim[0];
-          const claim = claimProofMapping[claimer.address.toLowerCase()][0];
+          const claim = claimProofMapping.get(claimer.address.toLowerCase())![0];
 
           await forceNextTime(claim.claimData.unlocksAt);
-          await expect(() =>
-            rewarder.connect(claimer).claimRewards([claim.merkleProof], [claim.claimData]),
-          ).to.changeTokenBalance(token, claimer, claim.claimData.amountToClaim);
-        });
-
-        it('can do batch claiming', async () => {
-          const claimCountToUnlock = totalClaimsPerUser - 2;
-          const claimer = usersThatCanClaim[0];
-          const claimsToUnlock = claimProofMapping[claimer.address.toLowerCase()].slice(0, claimCountToUnlock);
-
-          const merkleProofs = claimsToUnlock.map(e => e.merkleProof);
-          const claims = claimsToUnlock.map(e => e.claimData);
-          const amountToClaim = claims.map(e => e.amountToClaim).reduce((acc, i) => acc + i);
-          const lastClaimUnlockTime = claims.map(e => e.unlocksAt).reduce((acc, i) => (i > acc ? i : acc));
-          await forceNextTime(lastClaimUnlockTime);
-
-          await expect(() => rewarder.connect(claimer).claimRewards(merkleProofs, claims)).to.changeTokenBalance(
+          await expect(() => rewarder.connect(claimer).claim(claim.merkleProof, claim.claimData)).to.changeTokenBalance(
             token,
             claimer,
-            amountToClaim,
+            claim.claimData.amount,
           );
         });
 
@@ -303,51 +281,28 @@ describe('Rewarder', function () {
           // Force the unlock time to match the very first available claim
           //  but try to claim the lhe last claim (that's not yet unlocked)
           const claimer = usersThatCanClaim[0];
-          const claimFirst = claimProofMapping[claimer.address.toLowerCase()][0];
-          const claimLast = claimProofMapping[claimer.address.toLowerCase()][totalClaimsPerUser - 1];
+          const claimFirst = claimProofMapping.get(claimer.address.toLowerCase())![0];
+          const claimLast = claimProofMapping.get(claimer.address.toLowerCase())![totalClaimsPerUser - 1];
           const claimData = claimLast.claimData;
           await forceNextTime(claimFirst.claimData.unlocksAt);
 
           await expectError(
-            rewarder.connect(claimer).claimRewards([claimLast.merkleProof], [claimLast.claimData]),
+            rewarder.connect(claimer).claim(claimLast.merkleProof, claimLast.claimData),
             'ClaimNotYetUnlocked',
-            [
-              [claimData.amountToClaim, claimData.unlocksAt, claimData.index.toNumber()],
-              claimFirst.claimData.unlocksAt,
-            ],
+            [[claimData.amount.toBigInt(), claimData.unlocksAt]],
           );
-        });
-
-        it('cannot do batch claiming when one reward is not yet unlocked', async () => {
-          const claimer = usersThatCanClaim[0];
-          const claimsToUnlock = claimProofMapping[claimer.address.toLowerCase()];
-
-          const merkleProofs = claimsToUnlock.map(e => e.merkleProof);
-          const claims = claimsToUnlock.map(e => e.claimData);
-          const previousToLastClaimUnlockTime = claims[totalClaimsPerUser - 2];
-          await forceNextTime(previousToLastClaimUnlockTime.unlocksAt);
-
-          const lastClaim = claims[totalClaimsPerUser - 1];
-          await expectError(rewarder.connect(claimer).claimRewards(merkleProofs, claims), 'ClaimNotYetUnlocked', [
-            [lastClaim.amountToClaim, lastClaim.unlocksAt, lastClaim.index.toNumber()],
-            previousToLastClaimUnlockTime.unlocksAt,
-          ]);
         });
 
         it('cannot claim the same reward multiple times', async () => {
           const claimer = usersThatCanClaim[0];
-          const claim = claimProofMapping[claimer.address.toLowerCase()][0];
+          const claim = claimProofMapping.get(claimer.address.toLowerCase())![0];
           await forceNextTime(claim.claimData.unlocksAt);
 
           // claim once
-          await rewarder.connect(claimer).claimRewards([claim.merkleProof], [claim.claimData]);
+          await rewarder.connect(claimer).claim(claim.merkleProof, claim.claimData);
 
           // try claiming the second time
-          await expectError(
-            rewarder.connect(claimer).claimRewards([claim.merkleProof], [claim.claimData]),
-            'AlreadyClaimed',
-            [[claim.claimData.amountToClaim, claim.claimData.unlocksAt, claim.claimData.index.toNumber()]],
-          );
+          await expectError(rewarder.connect(claimer).claim(claim.merkleProof, claim.claimData), 'NothingToClaim');
         });
 
         it('cannot claim reward for other players', async () => {
@@ -355,12 +310,12 @@ describe('Rewarder', function () {
           const otherClaimer = usersThatCanClaim[1];
 
           // Get claim for the `otherClaimer`
-          const claim = claimProofMapping[otherClaimer.address.toLowerCase()][0];
+          const claim = claimProofMapping.get(otherClaimer.address.toLowerCase())![0];
           await forceNextTime(claim.claimData.unlocksAt);
 
           // send claim tx from `maliciousClaimer`
           await expectError(
-            rewarder.connect(maliciousClaimer).claimRewards([claim.merkleProof], [claim.claimData]),
+            rewarder.connect(maliciousClaimer).claim(claim.merkleProof, claim.claimData),
             'InvalidMerkleProof',
           );
         });
@@ -369,23 +324,31 @@ describe('Rewarder', function () {
           for (let claimIndex = 0; claimIndex < totalClaimsPerUser; claimIndex++) {
             for (let index = 0; index < usersThatCanClaim.length; index++) {
               const claimer = usersThatCanClaim[index];
-              const claim = claimProofMapping[claimer.address.toLowerCase()][claimIndex];
+              const claim = claimProofMapping.get(claimer.address.toLowerCase())![claimIndex];
               await forceNextTime(claim.claimData.unlocksAt);
 
-              const tx = await rewarder.connect(claimer).claimRewards([claim.merkleProof], [claim.claimData]);
+              const tx = await rewarder.connect(claimer).claim(claim.merkleProof, claim.claimData);
               // Tokens have been transferred
-              await expect(tx)
-                .to.emit(token, 'Transfer')
-                .withArgs(vault.address, claimer.address, claim.claimData.amountToClaim);
+              await expect(tx).to.emit(token, 'Transfer').withArgs(vault.address, claimer.address, amount);
 
               // Cannot claim the second time
-              await expectError(
-                rewarder.connect(claimer).claimRewards([claim.merkleProof], [claim.claimData]),
-                'AlreadyClaimed',
-                [[claim.claimData.amountToClaim, claim.claimData.unlocksAt, claim.claimData.index.toNumber()]],
-              );
+              await expectError(rewarder.connect(claimer).claim(claim.merkleProof, claim.claimData), 'NothingToClaim');
             }
           }
+        });
+
+        it('cannot claim past claims if recent one already claimed', async () => {
+          const claimer = usersThatCanClaim[0];
+          const claimLast = claimProofMapping.get(claimer.address.toLowerCase())![totalClaimsPerUser - 1];
+          await forceNextTime(claimLast.claimData.unlocksAt);
+          await rewarder.connect(claimer).claim(claimLast.merkleProof, claimLast.claimData);
+
+          const claimFirst = claimProofMapping.get(claimer.address.toLowerCase())![0];
+
+          await expectError(
+            rewarder.connect(claimer).claim(claimFirst.merkleProof, claimFirst.claimData),
+            'NothingToClaim',
+          );
         });
       });
 
@@ -405,7 +368,7 @@ describe('Rewarder', function () {
         });
 
         it('make sure that average user cannot change token', async () => {
-          await expect(rewarder.connect(regularUser).setTokenAddress(regularUser.address)).to.be.revertedWith(
+          await expect(rewarder.connect(regularUser).setToken(regularUser.address)).to.be.revertedWith(
             'Ownable: caller is not the owner',
           );
         });

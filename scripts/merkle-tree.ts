@@ -5,104 +5,134 @@ import { solidityKeccak256 } from 'ethers/lib/utils';
 import { BigNumber } from 'ethers';
 
 export type ClaimData = {
-  amountToClaim: number;
+  amount: BigNumber;
   unlocksAt: number;
 };
 
 type Address = { address: AddressStr };
-type Index = { index: BigNumber };
 type AddressStr = string;
 
 export type ClaimWithAddress = ClaimData & Address;
-export type ClaimWithIndex = ClaimData & Index;
-export type ClaimWithAddressAndIndex = ClaimData & Address & Index;
 
 export type ClaimInfo = {
-  claimData: ClaimWithIndex;
+  claimData: ClaimData;
   merkleProof: Array<string>;
 };
-export type ClaimProofMapping = {
-  [key: AddressStr]: Array<ClaimInfo>;
-};
+export type ClaimProofMapping = Map<AddressStr, Array<ClaimInfo>>;
 
 export function constructRewardsMerkleTree(
   inputs: Array<ClaimWithAddress>,
   chainId: number,
 ): [MerkleTree, ClaimProofMapping] {
   // --------- validation --------- //
-  {
-    // Validate addresses
-    for (const input of inputs) {
-      if (!isValidAddress(input.address)) {
-        throw Error(`${input.address} is not a valid address`);
-      }
-    }
-  }
-  // --------- Generate the indexes for each user --------- //
-  const claimsWithIndex: { [key: AddressStr]: Array<ClaimWithIndex> } = {};
-  for (const input of inputs) {
-    if (claimsWithIndex[input.address.toLowerCase()] === undefined) {
-      claimsWithIndex[input.address.toLowerCase()] = [{ ...input, index: BigNumber.from(2).pow(0) }];
+  throwIfInvalidAddress(inputs);
+  throwIfUnlockPeriodsRepeatPerUser(inputs);
+
+  // --------- Generate the increasing claim amount --------- //
+  // 0. Store all addresses in lower case
+  // 1. Create a mapping Map<Address, Array<Claim>>
+  // 2. For each mapping entry: sort by time in increasing order
+  // 3. For each mapping entry: rollover the amount from the previous entry to the next one
+  // 4. For each mapping entry: For each entry: create merkle hash, store with the [i] object
+  // 5. Flatten out all hashes, construct merkle tree
+  // 6. For each mapping entry: For each entry: fetch merkle proof, store with the [i] object, drop "address" from claim object
+
+  // ---- 0 ---- //
+  const lowercasedInputs = inputs.map(e => ({ ...e, address: e.address.toLowerCase() }));
+
+  // ---- 1 ---- //
+  const claims = new Map<AddressStr, Array<ClaimWithAddress>>();
+  for (const input of lowercasedInputs) {
+    const currentlyStored = claims.get(input.address);
+    if (currentlyStored === undefined) {
+      claims.set(input.address, [input]);
     } else {
-      const amountOfItems = claimsWithIndex[input.address.toLowerCase()].length;
-
-      // NOTE: BigNumber will throw an error if we're trying to exit the 256bit range. Yes, there are tests for that.
-      const index = BigNumber.from(2).pow(amountOfItems);
-      claimsWithIndex[input.address.toLowerCase()].push({ ...input, index });
+      currentlyStored.push(input);
     }
   }
 
-  const inputsWithIndex = Object.keys(claimsWithIndex).reduce((acc, i) => {
-    const addressAware = claimsWithIndex[i].map<ClaimWithAddressAndIndex>(e => ({ ...e, address: i }));
-    acc.push(...addressAware);
-    return acc;
-  }, [] as Array<ClaimWithAddressAndIndex>);
-  const lowercaseInputs: Array<ClaimWithAddressAndIndex> = inputsWithIndex.map(e => ({
-    ...e,
-    address: e.address.toLowerCase(),
-  }));
-
-  // --------- sort the addresses --------- //
-  lowercaseInputs.sort((a, b) => (a.address < b.address ? -1 : 1));
-
-  // --------- Construct the Merkle tree --------- //
-  const leaves = lowercaseInputs.map(e => constructHash(e, chainId));
-  const tree = new MerkleTree(leaves, keccak256, { sort: true });
-
-  // --------- Generate final json mapping --------- //
-  const res: ClaimProofMapping = {};
-  for (const zipped of zip(leaves, lowercaseInputs)) {
-    const leaf = zipped[0];
-    const input = zipped[1];
-    const proof = tree.getHexProof(leaf);
-
-    const item: ClaimInfo = {
-      claimData: {
-        amountToClaim: input.amountToClaim,
-        unlocksAt: input.unlocksAt,
-        index: input.index,
+  // ---- 2 ---- //
+  for (const input of claims.keys()) {
+    const currentlyStored = claims.get(input)!;
+    currentlyStored.sort();
+  }
+  // ---- 3 ---- //
+  for (const input of claims.keys()) {
+    const items = claims.get(input)!;
+    const updatedInputs = items.reduce(
+      (acc, i, idx) => {
+        const altered = { ...i, amount: i.amount.add(acc.rollover) };
+        acc.newItems.push(altered);
+        acc.rollover = altered.amount;
+        return acc;
       },
-      merkleProof: proof,
-    };
-    if (res[input.address] === undefined) {
-      res[input.address] = [item];
-    } else {
-      res[input.address].push(item);
-    }
+      {
+        newItems: [] as Array<ClaimWithAddress>,
+        rollover: BigNumber.from(0),
+      },
+    ).newItems;
+
+    claims.set(input, updatedInputs);
+  }
+
+  // ---- 4 ---- //
+  const claimsWithHashes = new Map<AddressStr, Array<ClaimWithAddress & { hash: Buffer }>>();
+  const allHashes: Array<Buffer> = [];
+  for (const input of claims.keys()) {
+    const items = claims.get(input)!.map(e => ({
+      ...e,
+      hash: constructHash(e.address, BigNumber.from(e.amount), e.unlocksAt, chainId),
+    }));
+    claimsWithHashes.set(input, items);
+    allHashes.push(...items.map(e => e.hash));
+  }
+
+  // ---- 5 ---- //
+  const tree = new MerkleTree(allHashes, keccak256, { sort: true });
+
+  // ---- 6 ---- //
+  const claimsWithProofs = new Map<AddressStr, Array<ClaimInfo>>();
+  for (const input of claims.keys()) {
+    const items: Array<ClaimInfo> = claimsWithHashes.get(input)!.map(e => ({
+      merkleProof: tree.getHexProof(e.hash),
+      claimData: {
+        amount: e.amount,
+        unlocksAt: e.unlocksAt,
+      },
+    }));
+    claimsWithProofs.set(input, items);
   }
 
   // return the merkle tree, the address mapping
-  return [tree, res];
+  return [tree, claimsWithProofs];
 }
-
-export function constructHash(claim: ClaimWithAddressAndIndex, chainId: number) {
-  const hash = solidityKeccak256(
-    ['address', 'uint256', 'uint256', 'uint256', 'uint256'],
-    [claim.address, chainId, claim.amountToClaim, claim.unlocksAt, claim.index],
-  );
+export function constructHash(address: string, amount: BigNumber, unlocksAt: number, chainId: number) {
+  const hash = solidityKeccak256(['address', 'uint256', 'uint256', 'uint256'], [address, chainId, amount, unlocksAt]);
   return Buffer.from(hash.slice(2), 'hex');
 }
 
-function zip<T, K>(first: Array<T>, second: Array<K>): Array<[T, K]> {
-  return first.map((e, idx) => [e, second[idx]]);
+function throwIfInvalidAddress(inputs: Array<ClaimWithAddress>) {
+  for (const input of inputs) {
+    if (!isValidAddress(input.address)) {
+      throw Error(`${input.address} is not a valid address`);
+    }
+  }
+}
+
+function throwIfUnlockPeriodsRepeatPerUser(inputs: Array<ClaimWithAddress>) {
+  const unlockPeriods = new Map<string, Set<number>>();
+  for (const input of inputs) {
+    const currentlyStored = unlockPeriods.get(input.address.toLowerCase());
+    if (currentlyStored === undefined) {
+      const set = new Set<number>();
+      const newSet = set.add(input.unlocksAt);
+      unlockPeriods.set(input.address.toLowerCase(), newSet);
+    } else {
+      if (currentlyStored.has(input.unlocksAt)) {
+        throw Error(`Duplicate unlock period for user ${input.address}; offending period: ${input.unlocksAt}!`);
+      }
+      const newSet = currentlyStored.add(input.unlocksAt);
+      unlockPeriods.set(input.address.toLowerCase(), newSet);
+    }
+  }
 }

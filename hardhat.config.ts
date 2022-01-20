@@ -11,6 +11,9 @@ import 'hardhat-deploy';
 
 import dotenv from 'dotenv';
 
+// Enable tasks
+import './tasks';
+
 const env = dotenv.config();
 
 const HH_MNEMONIC = 'test test test test test test test test test test test junk';

@@ -20,9 +20,10 @@ interface IRewarder is IBlockAware {
 
     // ------------- Errors ------------- //
     error ClaimingNotYetEnabled();
+    error ClaimingAlreadyEnabled();
     error InvalidMerkleProof();
     error ClaimNotYetUnlocked(Reward claim); // TODO remove block timestamp param
-    error AlreadyClaimed(Reward claim);
+    error NothingToClaim();
 
     // ------------- Methods ------------- //
     function claim(bytes32[] calldata proof, Reward memory claimData) external;
