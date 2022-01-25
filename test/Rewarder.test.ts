@@ -356,7 +356,7 @@ describe('Rewarder', function () {
         let regularUser: SignerWithAddress;
 
         before(async () => {
-          regularUser = await ethers.getNamedSigner('regularUser');
+          [regularUser] = await ethers.getUnnamedSigners();
         });
 
         it('make sure that average user cannot change merkle root', async () => {

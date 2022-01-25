@@ -16,9 +16,9 @@ import './tasks';
 
 const env = dotenv.config();
 
-const HH_MNEMONIC = 'test test test test test test test test test test test junk';
-const MNEMONIC = env.parsed?.MNEMONIC || HH_MNEMONIC;
 const ETHERSCAN_API_KEY = env.parsed?.ETHERSCAN_API;
+const PRIVATE_KEY = env.parsed!.PRIVATE_KEY;
+const RINKEBY_URL = env.parsed!.RINKEBY_URL;
 
 const config: HardhatUserConfig = {
   mocha: {
@@ -27,7 +27,6 @@ const config: HardhatUserConfig = {
   namedAccounts: {
     deployer: 0,
     vault: 1,
-    regularUser: 2, // for tests
   },
   solidity: {
     compilers: [
@@ -43,17 +42,14 @@ const config: HardhatUserConfig = {
     ],
   },
   networks: {
-    ropsten: {
-      url: process.env.ROPSTEN_URL || '',
-      accounts: process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] : [],
+    rinkeby: {
+      url: RINKEBY_URL,
+      accounts: [PRIVATE_KEY],
+      tags: ['production'],
     },
   },
-  gasReporter: {
-    enabled: process.env.REPORT_GAS !== undefined,
-    currency: 'USD',
-  },
   etherscan: {
-    apiKey: process.env.ETHERSCAN_API_KEY,
+    apiKey: ETHERSCAN_API_KEY,
   },
   typechain: {
     outDir: './typechain',

@@ -6,6 +6,7 @@
   "scripts": {
     "compile": "TS_NODE_TRANSPILE_ONLY=1 hardhat typechain",
     "coverage": "hardhat compile && hardhat coverage",
+    "deploy-rinkeby": "hardhat --network rinkeby deploy --tags production",
     "postinstall": "yarn compile",
     "lint": "prettier --check \"**/*.{ts,js,sol}\" && eslint \"**/*.{js,ts}\" && solhint 'contracts/**/*.sol'",
     "lint:fix": "prettier --write \"**/*.{ts,js,sol}\" && eslint --fix \"**/*.{js,ts}\" && solhint --fix 'contracts/**/*.sol'",
