@@ -3,6 +3,8 @@ import { TASK_TEST_SETUP_TEST_ENVIRONMENT } from 'hardhat/builtin-tasks/task-nam
 import { subtask } from 'hardhat/config';
 import chai, { Assertion } from 'chai';
 
+import './csv-parser';
+
 declare global {
   //eslint-disable-next-line @typescript-eslint/no-namespace
   export namespace Chai {

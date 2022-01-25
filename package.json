@@ -19,7 +19,9 @@
     "contracts/**/*.sol": "solhint --fix",
     "package.json": "sort-package-json"
   },
-  "dependencies": {},
+  "dependencies": {
+    "csv-parse": "^5.0.4"
+  },
   "devDependencies": {
     "@commitlint/cli": "^15.0.0",
     "@commitlint/config-conventional": "^15.0.0",
