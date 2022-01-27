@@ -9,8 +9,7 @@ export type ClaimData = {
   unlocksAt: number;
 };
 
-type Address = { address: AddressStr };
-type AddressStr = string;
+type Address = { address: string };
 
 export type ClaimWithAddress = ClaimData & Address;
 
@@ -18,15 +17,19 @@ export type ClaimInfo = {
   claimData: ClaimData;
   merkleProof: Array<string>;
 };
-export type ClaimProofMapping = Map<AddressStr, Array<ClaimInfo>>;
+export type ClaimProofMapping = Map<string, Array<ClaimInfo>>;
 
 export function constructRewardsMerkleTree(
   inputs: Array<ClaimWithAddress>,
   chainId: number,
+  rewarderAddress: string,
 ): [MerkleTree, ClaimProofMapping] {
   // --------- validation --------- //
   throwIfInvalidAddress(inputs);
   throwIfUnlockPeriodsRepeatPerUser(inputs);
+  if (!isValidAddress(rewarderAddress)) {
+    throw Error(`Invalid tokenAddress! ${rewarderAddress}`);
+  }
 
   // --------- Generate the increasing claim amount --------- //
   // 0. Store all addresses in lower case
@@ -41,7 +44,7 @@ export function constructRewardsMerkleTree(
   const lowercasedInputs = inputs.map(e => ({ ...e, address: e.address.toLowerCase() }));
 
   // ---- 1 ---- //
-  const claims = new Map<AddressStr, Array<ClaimWithAddress>>();
+  const claims = new Map<string, Array<ClaimWithAddress>>();
   for (const input of lowercasedInputs) {
     const currentlyStored = claims.get(input.address);
     if (currentlyStored === undefined) {
@@ -76,12 +79,12 @@ export function constructRewardsMerkleTree(
   }
 
   // ---- 4 ---- //
-  const claimsWithHashes = new Map<AddressStr, Array<ClaimWithAddress & { hash: Buffer }>>();
+  const claimsWithHashes = new Map<string, Array<ClaimWithAddress & { hash: Buffer }>>();
   const allHashes: Array<Buffer> = [];
   for (const input of claims.keys()) {
     const items = claims.get(input)!.map(e => ({
       ...e,
-      hash: constructHash(e.address, BigNumber.from(e.amount), e.unlocksAt, chainId),
+      hash: constructHash(rewarderAddress, e.address, BigNumber.from(e.amount), e.unlocksAt, chainId),
     }));
     claimsWithHashes.set(input, items);
     allHashes.push(...items.map(e => e.hash));
@@ -91,7 +94,7 @@ export function constructRewardsMerkleTree(
   const tree = new MerkleTree(allHashes, keccak256, { sort: true });
 
   // ---- 6 ---- //
-  const claimsWithProofs = new Map<AddressStr, Array<ClaimInfo>>();
+  const claimsWithProofs = new Map<string, Array<ClaimInfo>>();
   for (const input of claims.keys()) {
     const items: Array<ClaimInfo> = claimsWithHashes.get(input)!.map(e => ({
       merkleProof: tree.getHexProof(e.hash),
@@ -106,8 +109,18 @@ export function constructRewardsMerkleTree(
   // return the merkle tree, the address mapping
   return [tree, claimsWithProofs];
 }
-export function constructHash(address: string, amount: BigNumber, unlocksAt: number, chainId: number) {
-  const hash = solidityKeccak256(['address', 'uint256', 'uint256', 'uint256'], [address, chainId, amount, unlocksAt]);
+
+export function constructHash(
+  rewarderAddress: string,
+  address: string,
+  amount: BigNumber,
+  unlocksAt: number,
+  chainId: number,
+) {
+  const hash = solidityKeccak256(
+    ['address', 'address', 'uint256', 'uint256', 'uint256'],
+    [rewarderAddress, address, chainId, amount, unlocksAt],
+  );
   return Buffer.from(hash.slice(2), 'hex');
 }
 

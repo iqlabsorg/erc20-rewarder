@@ -33,13 +33,7 @@ describe('Rewarder', function () {
   });
 
   it('can be deployed', async () => {
-    const time = await currentTime();
-    const inputs: Array<ClaimWithAddress> = [
-      { address: deployer.address, amount: BigNumber.from(100000), unlocksAt: time },
-    ];
-    const [tree] = constructRewardsMerkleTree(inputs, chainId);
-
-    await new Rewarder__factory(deployer).deploy(tree.getHexRoot(), vault.address, token.address);
+    await new Rewarder__factory(deployer).deploy(vault.address, token.address);
   });
 
   describe('Misc validation', () => {
@@ -58,9 +52,9 @@ describe('Rewarder', function () {
           unlocksAt: timeBeforeDeployment,
         },
       ];
-      [merkleTree] = constructRewardsMerkleTree(inputs, chainId);
 
-      rewarder = await new Rewarder__factory(deployer).deploy(merkleTree.getHexRoot(), vault.address, token.address);
+      rewarder = await new Rewarder__factory(deployer).deploy(vault.address, token.address);
+      [merkleTree] = constructRewardsMerkleTree(inputs, chainId, rewarder.address);
     });
 
     it('has the correct block number', async () => {
@@ -84,25 +78,23 @@ describe('Rewarder', function () {
     });
 
     it('has the correct merkle root', async () => {
-      await expect(rewarder.getMerkleRoot()).to.eventually.equal(merkleTree.getHexRoot());
+      await expect(rewarder.getMerkleRoot()).to.eventually.equal(
+        '0x0000000000000000000000000000000000000000000000000000000000000000',
+      );
     });
 
     it('performs same hashing calculation as off-chain', async () => {
-      const hashExposer = await new HasherExposer__factory(stranger1).deploy(
-        merkleTree.getHexRoot(),
-        vault.address,
-        token.address,
-      );
+      const hashExposer = await new HasherExposer__factory(stranger1).deploy(vault.address, token.address);
       const sampleClaim = {
         amount: BigNumber.from(21341),
         unlocksAt: 515151,
       };
 
       const preComputedHash = bufferToHex(
-        constructHash(deployer.address, sampleClaim.amount, sampleClaim.unlocksAt, chainId),
+        constructHash(hashExposer.address, deployer.address, sampleClaim.amount, sampleClaim.unlocksAt, chainId),
       );
 
-      await expect(hashExposer.connect(deployer).calculateHashPub(sampleClaim)).to.eventually.equal(preComputedHash);
+      await expect(hashExposer.connect(deployer).calculateHash(sampleClaim)).to.eventually.equal(preComputedHash);
     });
   });
 
@@ -117,7 +109,9 @@ describe('Rewarder', function () {
         inputs.push({ address: deployer.address, amount, unlocksAt });
       }
 
-      expect(() => constructRewardsMerkleTree(inputs, chainId)).to.throw('Duplicate unlock period for user');
+      expect(() => constructRewardsMerkleTree(inputs, chainId, token.address)).to.throw(
+        'Duplicate unlock period for user',
+      );
     });
 
     it('makes all subsequent claims larger than the previous one', () => {
@@ -130,7 +124,7 @@ describe('Rewarder', function () {
         }
       }
 
-      const [, mapping] = constructRewardsMerkleTree(inputs, chainId);
+      const [, mapping] = constructRewardsMerkleTree(inputs, chainId, token.address);
       for (const address of toGenerateFor) {
         const items = mapping.get(address.toLowerCase())!;
 
@@ -149,16 +143,29 @@ describe('Rewarder', function () {
     it('throws on invalid address', () => {
       const invalidAddress = deployer.address.replace('0', 'z');
       const inputs: Array<ClaimWithAddress> = [
-        { address: deployer.address.replace('0', 'z'), amount, unlocksAt },
+        { address: invalidAddress, amount, unlocksAt },
         { address: vault.address, amount, unlocksAt: unlocksAt + 1 },
       ];
-      expect(() => constructRewardsMerkleTree(inputs, chainId)).to.throw(`${invalidAddress} is not a valid address`);
+      expect(() => constructRewardsMerkleTree(inputs, chainId, token.address)).to.throw(
+        `${invalidAddress} is not a valid address`,
+      );
+    });
+
+    it('throws on invalid rewarder address', () => {
+      const invalidRewarderAddress = stranger1.address.replace('0', 'z');
+      const inputs: Array<ClaimWithAddress> = [
+        { address: deployer.address, amount, unlocksAt },
+        { address: vault.address, amount, unlocksAt: unlocksAt + 1 },
+      ];
+      expect(() => constructRewardsMerkleTree(inputs, chainId, invalidRewarderAddress)).to.throw(
+        `Invalid tokenAddress! ${invalidRewarderAddress}`,
+      );
     });
 
     it('creates lowercased address from checksummed one', () => {
       const deployerChecksummed = toChecksumAddress(deployer.address);
       const inputs: Array<ClaimWithAddress> = [{ address: deployerChecksummed, amount, unlocksAt }];
-      const [, mapping] = constructRewardsMerkleTree(inputs, chainId);
+      const [, mapping] = constructRewardsMerkleTree(inputs, chainId, token.address);
 
       expect(mapping.get(deployerChecksummed)).to.equal(undefined);
       expect(mapping.get(deployerChecksummed.toLowerCase())).to.not.equal(undefined);
@@ -192,9 +199,9 @@ describe('Rewarder', function () {
         inputs.push(...claimsForUser);
       }
 
-      [merkleTree, claimProofMapping] = constructRewardsMerkleTree(inputs, chainId);
+      rewarder = await new Rewarder__factory(deployer).deploy(vault.address, token.address);
 
-      rewarder = await new Rewarder__factory(deployer).deploy(merkleTree.getHexRoot(), vault.address, token.address);
+      [merkleTree, claimProofMapping] = constructRewardsMerkleTree(inputs, chainId, rewarder.address);
 
       await token.connect(vault).increaseAllowance(rewarder.address, await token.balanceOf(vault.address));
     });
@@ -224,20 +231,22 @@ describe('Rewarder', function () {
         await expect(rewarder.getVault()).to.eventually.equal(deployer.address);
       });
 
-      it('can change token address', async () => {
-        await rewarder.connect(deployer).setToken(ethers.constants.AddressZero);
-
-        await expect(rewarder.getToken()).to.eventually.equal(ethers.constants.AddressZero);
-      });
-
-      it('can enable claiming', async () => {
+      it('can enable claiming after setting merkle root', async () => {
+        await rewarder.connect(deployer).setMerkleRoot(merkleTree.getHexRoot());
         await rewarder.connect(deployer).enableClaiming();
 
         await expect(rewarder.isClaimingEnabled()).to.eventually.equal(true);
       });
 
+      it('cannot enable claiming without setting merkle root', async () => {
+        await expect(rewarder.connect(deployer).enableClaiming()).to.be.revertedWith(
+          'Cannot enable claiming while merkle root not set!',
+        );
+      });
+
       describe('While claiming', () => {
         beforeEach(async () => {
+          await rewarder.connect(deployer).setMerkleRoot(merkleTree.getHexRoot());
           await rewarder.connect(deployer).enableClaiming();
         });
 
@@ -245,12 +254,6 @@ describe('Rewarder', function () {
           const newMerkleRoot = bufferToHex(keccakFromString('the new seed'));
 
           await expect(rewarder.connect(deployer).setMerkleRoot(newMerkleRoot)).to.be.revertedWithError(
-            'ClaimingAlreadyEnabled',
-          );
-        });
-
-        it('cannot change token', async () => {
-          await expect(rewarder.connect(deployer).setToken(ethers.constants.AddressZero)).to.be.revertedWithError(
             'ClaimingAlreadyEnabled',
           );
         });
@@ -363,12 +366,6 @@ describe('Rewarder', function () {
           const newMerkleRoot = bufferToHex(keccakFromString('the new seed'));
 
           await expect(rewarder.connect(regularUser).setMerkleRoot(newMerkleRoot)).to.be.revertedWith(
-            'Ownable: caller is not the owner',
-          );
-        });
-
-        it('make sure that average user cannot change token', async () => {
-          await expect(rewarder.connect(regularUser).setToken(regularUser.address)).to.be.revertedWith(
             'Ownable: caller is not the owner',
           );
         });

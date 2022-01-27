@@ -6,9 +6,11 @@ import { mkdir } from 'fs/promises';
 import { constructRewardsMerkleTree } from '../scripts/merkle-tree';
 import path from 'path';
 import { BigNumber } from 'ethers';
+import { isValidAddress } from 'ethereumjs-util';
 
 task('generate-merkle-tree-output', 'Generate the merkel proof for the incentivization program')
   .addParam('input', `Path to the csv file`)
+  .addParam('rewarderAddress', `Original ERC20 token address`)
   .addParam(
     'output',
     `the base path where to output files in form of :
@@ -18,7 +20,7 @@ task('generate-merkle-tree-output', 'Generate the merkel proof for the incentivi
     `,
   )
   .setAction(async (args, hre) => {
-    const { output, input } = args;
+    const { output, input, rewarderAddress } = args;
     const chainId = await hre.getChainId();
     // 1. Load the file
     // 2. Generate the tree and proofs
@@ -39,7 +41,7 @@ task('generate-merkle-tree-output', 'Generate the merkel proof for the incentivi
     }));
 
     // ---- 2. ---- //
-    const [tree, proofs] = constructRewardsMerkleTree(records, Number(chainId));
+    const [tree, proofs] = constructRewardsMerkleTree(records, Number(chainId), rewarderAddress);
 
     // ---- 3. ---- //
     const basePath = path.resolve(output, `${chainId.toString()}`);

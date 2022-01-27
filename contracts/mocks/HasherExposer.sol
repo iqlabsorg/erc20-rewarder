@@ -5,14 +5,10 @@ pragma solidity 0.8.11;
 import "../Rewarder.sol";
 
 contract HasherExposer is Rewarder {
-    constructor(
-        bytes32 merkleRoot,
-        address vault,
-        address token
-    ) Rewarder(merkleRoot, vault, token) {}
+    constructor(address vault, address token) Rewarder(vault, token) {}
 
     //solhint-disable-next-line comprehensive-interface
-    function calculateHashPub(Reward memory claim) public view returns (bytes32) {
-        return super.calculateHash(claim);
+    function calculateHash(Reward memory claim) public view returns (bytes32) {
+        return _calculateHash(claim);
     }
 }

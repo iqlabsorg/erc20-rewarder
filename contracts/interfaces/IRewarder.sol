@@ -2,6 +2,8 @@
 
 pragma solidity 0.8.11;
 
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
 import "./IBlockAware.sol";
 
 interface IRewarder is IBlockAware {
@@ -32,8 +34,6 @@ interface IRewarder is IBlockAware {
 
     function setMerkleRoot(bytes32 merkleRoot) external;
 
-    function setToken(address token) external;
-
     function setVault(address vault) external;
 
     function isClaimingEnabled() external returns (bool);
@@ -45,4 +45,10 @@ interface IRewarder is IBlockAware {
     function getVault() external returns (address);
 
     function getCurrentlyClaimedAmount(address claimer) external returns (uint256);
+
+    function recoverTokens(
+        IERC20 token,
+        address to,
+        uint256 amount
+    ) external;
 }
