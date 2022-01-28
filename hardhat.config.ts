@@ -19,6 +19,7 @@ const env = dotenv.config();
 const ETHERSCAN_API_KEY = env.parsed?.ETHERSCAN_API;
 const PRIVATE_KEY = env.parsed!.PRIVATE_KEY;
 const RINKEBY_URL = env.parsed!.RINKEBY_URL;
+const BSCTESTNET_URL = env.parsed!.BSCTESTNET_URL;
 
 const config: HardhatUserConfig = {
   mocha: {
@@ -45,7 +46,10 @@ const config: HardhatUserConfig = {
     rinkeby: {
       url: RINKEBY_URL,
       accounts: [PRIVATE_KEY],
-      tags: ['production'],
+    },
+    bscTestnet: {
+      url: BSCTESTNET_URL,
+      accounts: [PRIVATE_KEY],
     },
   },
   etherscan: {

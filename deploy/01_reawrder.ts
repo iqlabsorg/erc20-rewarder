@@ -12,14 +12,13 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
   const { deploy } = deployments;
 
   // Read the deploy params from env file
-  const merkleRoot = env.parsed!.MERKLE_ROOT;
   const tokenVault = env.parsed!.TOKEN_VAULT;
   const token = env.parsed!.TOKEN_ADDRESS;
 
   // Deploy the contract
   await deploy('Rewarder', {
     from: deployer.address,
-    args: [merkleRoot, tokenVault, token],
+    args: [tokenVault, token],
     log: true,
   });
 };

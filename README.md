@@ -1,6 +1,11 @@
 # ERC20 token rewarder
 
-Create a csv file in format (e.g. `input.csv`):
+Deploy the contracts:
+```
+hardhat --network [network] deploy --tags production
+```
+
+Create a csv file (e.g. `input.csv`) in format :
 
 ```csv
 address,amount,unlocksAt
@@ -13,12 +18,7 @@ address,amount,unlocksAt
 Generate the merkle roots and proofs:
 
 ```
-npx hardhat generate-merkle-tree-output --input ./inputs.csv --output ./output
+npx hardhat --network bscTestnet generate-merkle-tree-output --input ./inputs.csv --output ./output --rewarder 0x9f2f77451aB50AE06B88f1857Fbeb6b414590c2C
 ```
 
 Set necessary env variables inside your `.env` file
-
-Deploy the contracts:
-```
-hardhat --network [network] deploy --tags production
-```

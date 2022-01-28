@@ -10,7 +10,7 @@ import { isValidAddress } from 'ethereumjs-util';
 
 task('generate-merkle-tree-output', 'Generate the merkel proof for the incentivization program')
   .addParam('input', `Path to the csv file`)
-  .addParam('rewarderAddress', `Original ERC20 token address`)
+  .addParam('rewarder', `Deployed rewarder address`)
   .addParam(
     'output',
     `the base path where to output files in form of :
@@ -20,7 +20,7 @@ task('generate-merkle-tree-output', 'Generate the merkel proof for the incentivi
     `,
   )
   .setAction(async (args, hre) => {
-    const { output, input, rewarderAddress } = args;
+    const { output, input, rewarder } = args;
     const chainId = await hre.getChainId();
     // 1. Load the file
     // 2. Generate the tree and proofs
@@ -41,7 +41,7 @@ task('generate-merkle-tree-output', 'Generate the merkel proof for the incentivi
     }));
 
     // ---- 2. ---- //
-    const [tree, proofs] = constructRewardsMerkleTree(records, Number(chainId), rewarderAddress);
+    const [tree, proofs] = constructRewardsMerkleTree(records, Number(chainId), rewarder);
 
     // ---- 3. ---- //
     const basePath = path.resolve(output, `${chainId.toString()}`);
