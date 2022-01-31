@@ -15,6 +15,7 @@ contract Rewarder is Ownable, IRewarder {
 
     // ------------- Immutables ------------- //
     uint64 internal immutable _deploymentBlock;
+    IERC20 internal immutable _token;
 
     // ------------- Storage ------------- //
 
@@ -26,11 +27,6 @@ contract Rewarder is Ownable, IRewarder {
     address internal _vault; // 160 bits
     bool internal _claimingEnabled; // 8 bits
     // 88 free bits
-    // --- Slot end --- //
-
-    // --- Slot start --- //
-    IERC20 internal immutable _token; // 160 bits
-    // 96 free bits
     // --- Slot end --- //
 
     mapping(address => uint256) internal _claimedRewards;
@@ -54,8 +50,6 @@ contract Rewarder is Ownable, IRewarder {
 
         _setVault(vault);
         _deploymentBlock = uint64(block.number);
-
-        emit TokenUpdated(token);
     }
 
     function claim(bytes32[] calldata proof, Reward calldata claimData) external override whenClaimingEnabled {

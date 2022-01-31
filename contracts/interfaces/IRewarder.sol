@@ -14,11 +14,10 @@ interface IRewarder is IBlockAware {
     }
 
     // ------------- Events ------------- //
-    event VaultUpdated(address indexed oldVault, address indexed newVault);
-    event MerkleRootUpdated(bytes32 indexed newMerkleRoot);
-    event TokenUpdated(address newToken); // TODO remove `Address` from everywhere
+    event VaultUpdated(address oldVault, address newVault);
+    event MerkleRootUpdated(bytes32 newMerkleRoot);
     event ClaimingEnabled();
-    event Claimed(address indexed claimer, uint256 indexed unlockTime, uint256 indexed amountClaimed);
+    event Claimed(address indexed claimer, uint256 unlockTime, uint256 amountClaimed);
 
     // ------------- Errors ------------- //
     error ClaimingNotYetEnabled();
