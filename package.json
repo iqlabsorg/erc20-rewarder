@@ -13,7 +13,8 @@
     "local:dev": "hardhat node --no-deploy",
     "prepare": "node ./.setup.js && yarn compile && husky install",
     "size": "cross-env REPORT_SIZE=true hardhat compile",
-    "test": "yarn compile && hardhat test"
+    "test": "yarn compile && hardhat test $(find test/unit -name '*.test.ts')",
+    "test:fork": "cross-env FORKING=true hardhat test $(find test/fork -name '*.test.ts')"
   },
   "lint-staged": {
     "**/*.{js,ts}": "eslint --fix",
@@ -21,6 +22,7 @@
     "package.json": "sort-package-json"
   },
   "dependencies": {
+    "cross-env": "^7.0.3",
     "csv-parse": "^5.0.4"
   },
   "devDependencies": {

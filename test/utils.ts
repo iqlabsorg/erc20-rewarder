@@ -1,7 +1,10 @@
 import { expect } from 'chai';
 import { ethers } from 'hardhat';
 import { Block } from '@ethersproject/abstract-provider';
-import assert from 'assert';
+import { HardhatRuntimeEnvironment } from 'hardhat/types';
+import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers';
+import dotenv from 'dotenv';
+const env = dotenv.config();
 
 export const nextBlock = (timestamp = 0): Promise<unknown> =>
   ethers.provider.send('evm_mine', timestamp > 0 ? [timestamp] : []);
@@ -71,3 +74,28 @@ export enum Phases {
   CONFIGURING = 0,
   CLAIMING = 1,
 }
+
+export const impersonate = async (hre: HardhatRuntimeEnvironment, account: string): Promise<SignerWithAddress> => {
+  await hre.network.provider.request({
+    method: 'hardhat_impersonateAccount',
+    params: [account],
+  });
+
+  return await hre.ethers.getSigner(account);
+};
+
+export const resetFork = async (hre: HardhatRuntimeEnvironment, block?: number): Promise<void> => {
+  await hre.network.provider.request({
+    method: 'hardhat_reset',
+    params: block
+      ? [
+          {
+            forking: {
+              jsonRpcUrl: env.parsed!.FORK_URL,
+              blockNumber: block,
+            },
+          },
+        ]
+      : [],
+  });
+};

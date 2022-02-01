@@ -1,20 +1,19 @@
 import { SignerWithAddress } from '@nomiclabs/hardhat-ethers/signers';
-import chai, { expect } from 'chai';
+import { expect } from 'chai';
 import { ethers, network } from 'hardhat';
-import { constructRewardsMerkleTree, ClaimProofMapping, constructHash, ClaimWithAddress } from '../scripts/merkle-tree';
-import { ERC20Mock, ERC20Mock__factory, HasherExposer__factory, Rewarder, Rewarder__factory } from '../typechain';
-import chaiAsPromised from 'chai-as-promised';
-import { solidity } from 'ethereum-waffle';
+import {
+  constructRewardsMerkleTree,
+  ClaimProofMapping,
+  constructHash,
+  ClaimWithAddress,
+} from '../../scripts/merkle-tree';
+import { ERC20Mock, ERC20Mock__factory, HasherExposer__factory, Rewarder, Rewarder__factory } from '../../typechain';
 import { bufferToHex, keccakFromString, toChecksumAddress } from 'ethereumjs-util';
-import { currentBlock, currentTime, expectError, forceNextTime, Phases } from './utils';
+import { currentBlock, currentTime, expectError, forceNextTime } from '../utils';
 import { Block } from '@ethersproject/abstract-provider';
 import MerkleTree from 'merkletreejs';
 import { BigNumber } from 'ethers';
 import { parseEther } from 'ethers/lib/utils';
-
-// inject domain specific assertion methods
-chai.use(solidity);
-chai.use(chaiAsPromised);
 
 describe('Rewarder', function () {
   let deployer: SignerWithAddress;

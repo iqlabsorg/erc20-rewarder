@@ -20,6 +20,7 @@ const ETHERSCAN_API_KEY = env.parsed?.ETHERSCAN_API;
 const PRIVATE_KEY = env.parsed!.PRIVATE_KEY;
 const RINKEBY_URL = env.parsed!.RINKEBY_URL;
 const BSCTESTNET_URL = env.parsed!.BSCTESTNET_URL;
+const BSC_URL = env.parsed!.BSC_URL;
 
 const config: HardhatUserConfig = {
   mocha: {
@@ -51,6 +52,10 @@ const config: HardhatUserConfig = {
       url: BSCTESTNET_URL,
       accounts: [PRIVATE_KEY],
     },
+    bsc: {
+      url: BSC_URL,
+      accounts: [PRIVATE_KEY],
+    },
   },
   etherscan: {
     apiKey: ETHERSCAN_API_KEY,
@@ -60,5 +65,17 @@ const config: HardhatUserConfig = {
     target: 'ethers-v5',
   },
 };
+
+if (process.env.FORKING) {
+  const FORK_URL = env.parsed!.FORK_URL;
+  const FORK_CHAIN_ID = env.parsed!.FORK_CHAIN_ID;
+
+  config.networks!.hardhat = {
+    forking: {
+      url: FORK_URL,
+    },
+    chainId: FORK_CHAIN_ID ? Number(FORK_CHAIN_ID) : undefined,
+  };
+}
 
 export default config;
