@@ -6,7 +6,6 @@ import { mkdir } from 'fs/promises';
 import { constructRewardsMerkleTree } from '../scripts/merkle-tree';
 import path from 'path';
 import { BigNumber } from 'ethers';
-import { isValidAddress } from 'ethereumjs-util';
 
 task('generate-merkle-tree-output', 'Generate the merkel proof for the incentivization program')
   .addParam('input', `Path to the csv file`)
@@ -62,6 +61,7 @@ task('generate-merkle-tree-output', 'Generate the merkel proof for the incentivi
 
     const merkleProofsFilePath = path.resolve(basePath, 'claim_proofs.json');
     writeFileSync(merkleProofsFilePath, JSON.stringify(proofsAsObj));
+    return tree.getHexRoot();
   });
 
 export {};

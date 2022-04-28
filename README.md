@@ -11,20 +11,7 @@ It uses Merkle Trees to enforce the claiming logic and the contract never actual
 
 Set necessary env variables inside your `.env` file
 
-Notable settings:
-
-- TOKEN_VAULT - the address that will hold the ERC20 tokens (will need to set allowance!)
-- TOKEN_ADDRESS - the address of the ERC20 token
-
-
-### Step 2 - contract deployment
-
-Deploy the contracts:
-```
-hardhat --network [network] deploy --tags production
-```
-
-### Step 3 - data preparation
+### Step 2 - data preparation
 
 Create a csv file (e.g. `input.csv`) in format :
 
@@ -36,16 +23,19 @@ address,amount,unlocksAt
 0x9d163f0c50742810e3ab51a9260c5c5747cf4b6d,1000000000000000000,1651352400
 ```
 
-### Step 4 - generating merkle tree
+### Step 3 - generating merkle tree
 
 Generate the merkle roots and proofs (we're using the just deployed Rewarder address):
 
+Notable settings:
+
+- `token-vault` - the address that will hold the ERC20 tokens (will need to set allowance!)
+- `token-address` - the address of the ERC20 token
+
 ```
-npx hardhat --network bscTestnet generate-merkle-tree-output --input ./inputs.csv --output ./output --rewarder 0x9f2f77451aB50AE06B88f1857Fbeb6b414590c2C
+yarn hardhat --network [network] deploy-rewarder --input ./inputs/may-1-airdrop-test.csv --output ./output --token-vault 0xE6747a55c7d6ce24064Ea1CA3ddB76dcCdFbBaBc --token-address 0xb0AB0255561ECFaC53c6065B29BBcBD88A521A32
 ```
 
-### Step 5 - interaction with the contracts
+### Step 4 - interaction with the ERC20 token contract
 
-- set the merkle tree on the Rewarder using etherscan
-- set the allowance on the Token for the Rewarder
-- enable claiming on the Rewarder using etherscan
+- set the allowance on the Token for the Rewarder - token.approve(rewarder.address, 1000_000000000000000000)

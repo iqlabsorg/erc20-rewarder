@@ -4,6 +4,7 @@ import { subtask } from 'hardhat/config';
 import chai, { Assertion } from 'chai';
 
 import './csv-parser';
+import './deploy';
 
 declare global {
   //eslint-disable-next-line @typescript-eslint/no-namespace
