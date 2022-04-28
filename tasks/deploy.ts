@@ -37,11 +37,13 @@ task('deploy-rewarder', 'Deploy the rewarder and set up the merkle root')
       console.log('merkleRoot', merkleRoot);
       const tx = await rewarder.setMerkleRoot(merkleRoot);
       console.log('setMerkleRoot tx', tx.hash, tx.data);
+      await tx.wait();
     }
 
     {
       const tx = await rewarder.enableClaiming();
       console.log('enableClaiming tx', tx.hash, tx.data);
+      await tx.wait();
     }
 
     console.log(
