@@ -56,9 +56,23 @@ const config: HardhatUserConfig = {
       url: BSC_URL,
       accounts: [PRIVATE_KEY],
     },
+    polygon: {
+      url: 'https://polygon-mainnet.g.alchemy.com/v2/2iGyxP0Xl7W88mYQ1LhzFYZ1XkIOGMLm',
+      accounts: [PRIVATE_KEY],
+    },
+    mumbaiTestnet: {
+      url: 'https://polygon-mumbai.g.alchemy.com/v2/SvFhsM2TjGcQnUYrniK7HfytBADmmqvU',
+      accounts: [PRIVATE_KEY],
+    },
   },
   etherscan: {
-    apiKey: ETHERSCAN_API_KEY,
+    apiKey: {
+      polygon: '3SAKKF6CCEV9TW8JBJP9TERTY2U6NQHGHT',
+      bsc: 'TTWE1EGN7G8VFWP78UJXGBAFJMV9XIHRA6',
+      polygonMumbai: '3SAKKF6CCEV9TW8JBJP9TERTY2U6NQHGHT',
+      bscTestnet: 'TTWE1EGN7G8VFWP78UJXGBAFJMV9XIHRA6',
+    },
+    customChains: [],
   },
   typechain: {
     outDir: './typechain',

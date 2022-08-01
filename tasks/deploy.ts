@@ -1,6 +1,6 @@
 import { task, types } from 'hardhat/config';
 import MerkleTree from 'merkletreejs';
-import { Rewarder__factory } from '../typechain';
+import { Rewarder__factory, ERC20Mock__factory } from '../typechain';
 
 task('deploy-rewarder', 'Deploy the rewarder and set up the merkle root')
   .addParam('input', `Path to the csv file`)
@@ -45,6 +45,15 @@ task('deploy-rewarder', 'Deploy the rewarder and set up the merkle root')
       console.log('enableClaiming tx', tx.hash, tx.data);
       await tx.wait();
     }
+
+    const verifiedRewarder = await hre.run('verify-rewarder', {
+      rewarderAddress: rewarderDeployment.address,
+      tokenVaultAddress: tokenVault,
+      tokenAddress: tokenAddress,
+    });
+
+    console.log('verified rewarder');
+    console.log(verifiedRewarder);
 
     console.log(
       `Further steps: set allowance from the vault account (${tokenVault}) on the token address (${tokenAddress}) - token.approve(${rewarder.address}, ${hre.ethers.constants.MaxUint256})`,

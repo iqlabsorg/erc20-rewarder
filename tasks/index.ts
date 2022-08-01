@@ -5,6 +5,7 @@ import chai, { Assertion } from 'chai';
 
 import './csv-parser';
 import './deploy';
+import './verify';
 
 declare global {
   //eslint-disable-next-line @typescript-eslint/no-namespace

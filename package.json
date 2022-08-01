@@ -31,7 +31,7 @@
     "@ethersproject/abstract-provider": "^5.5.1",
     "@fintechstudios/eslint-plugin-chai-as-promised": "^3.1.0",
     "@nomiclabs/hardhat-ethers": "npm:hardhat-deploy-ethers@latest",
-    "@nomiclabs/hardhat-etherscan": "^3.0.0",
+    "@nomiclabs/hardhat-etherscan": "^3.1.0",
     "@nomiclabs/hardhat-waffle": "^2.0.1",
     "@openzeppelin/contracts": "^4.4.1",
     "@typechain/ethers-v5": "^8.0.5",

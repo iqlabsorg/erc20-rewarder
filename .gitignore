@@ -1,22 +1,28 @@
+# Merkle tree files
 outputs
 inputs
+
+# Node & Yarn files
 node_modules
 .env
+yarn-error.log
+
+# Testing files
 coverage
 coverage.json
 typechain
+arguments.js
 
-#Hardhat files
+# Hardhat post deployment files
 cache
 artifacts
+deployments
 
+# MacOS cache files
+.DS_Store
+
+# VS Code configs
 .vscode/*
 !.vscode/settings.json.default
 !.vscode/launch.json.default
 !.vscode/extensions.json.default
-
-deployments
-deployments/hardhat
-deployments/localhost
-
-yarn-error.log
