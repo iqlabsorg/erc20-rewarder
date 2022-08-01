@@ -46,14 +46,11 @@ task('deploy-rewarder', 'Deploy the rewarder and set up the merkle root')
       await tx.wait();
     }
 
-    const verifiedRewarder = await hre.run('verify-rewarder', {
+    await hre.run('verify-rewarder', {
       rewarderAddress: rewarderDeployment.address,
       tokenVaultAddress: tokenVault,
       tokenAddress: tokenAddress,
     });
-
-    console.log('verified rewarder');
-    console.log(verifiedRewarder);
 
     console.log(
       `Further steps: set allowance from the vault account (${tokenVault}) on the token address (${tokenAddress}) - token.approve(${rewarder.address}, ${hre.ethers.constants.MaxUint256})`,
