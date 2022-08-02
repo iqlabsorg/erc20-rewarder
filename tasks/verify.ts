@@ -1,17 +1,42 @@
 import { task, types } from 'hardhat/config';
 
-task('verify-rewarder', 'Verify the rewarder on chain scan')
-  .addParam('rewarderAddress', `Address of the Rewarder contract`, undefined, types.string)
-  .addParam('tokenVaultAddress', `Address of the token vault`, undefined, types.string)
-  .addParam('tokenAddress', `Address of the token`, undefined, types.string)
-  .setAction(async (args, hre) => {
-    const { rewarderAddress, tokenVaultAddress, tokenAddress } = args;
+task('verification:verify', 'Verification of a contract for a different chain scanners')
+  .addParam('contractName', 'The name of the contract', undefined, types.string, false)
+  .addParam('contractAddress', 'The ETH address of the contract', undefined, types.string, false)
+  .addParam('constructorArguments', 'The arguments passed to constructor during deploy', undefined, types.json, false)
+  .addParam('proxyVerification', 'Usage of old verify task', undefined, types.boolean, false)
+  .addParam('contractLibraries', 'The set of libraries used by contract', undefined, types.json, true)
+  .setAction(
+    async ({ contractName, contractAddress, constructorArguments, proxyVerification, contractLibraries }, hre) => {
+      try {
+        console.log(`Verifying ${contractName} contract: ${contractAddress}`);
+        let verificationParams;
 
-    console.log('Verification of Rewarder contract');
-    const verifiedRewarder = await hre.run('verify:verify', {
-      address: rewarderAddress,
-      constructorArguments: [tokenVaultAddress, tokenAddress],
-    });
+        if (contractLibraries) {
+          verificationParams = {
+            address: contractAddress as string,
+            constructorArguments: constructorArguments as [],
+            libraries: contractLibraries as object,
+          };
+        } else {
+          verificationParams = {
+            address: contractAddress as string,
+            constructorArguments: constructorArguments as [],
+          };
+        }
 
-    return verifiedRewarder;
-  });
+        if (proxyVerification) {
+          await hre.run('verify', verificationParams);
+        } else {
+          await hre.run('verify:verify', verificationParams);
+        }
+      } catch (err: any) {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+        if (err.message.includes('Reason: Already Verified')) {
+          console.log(`Contract ${contractName} is already verified`);
+        } else {
+          console.error(err);
+        }
+      }
+    },
+  );

@@ -18,6 +18,8 @@ task('deploy-rewarder', 'Deploy the rewarder and set up the merkle root')
     const { output, input, tokenAddress, tokenVault } = args;
     const deployer = await hre.ethers.getNamedSigner('deployer');
 
+    await hre.deployments.delete('Rewarder');
+
     // Deploy the contract
     const rewarderDeployment = await hre.deployments.deploy('Rewarder', {
       from: deployer.address,
@@ -46,10 +48,11 @@ task('deploy-rewarder', 'Deploy the rewarder and set up the merkle root')
       await tx.wait();
     }
 
-    await hre.run('verify-rewarder', {
-      rewarderAddress: rewarderDeployment.address,
-      tokenVaultAddress: tokenVault,
-      tokenAddress: tokenAddress,
+    await hre.run('verification:verify', {
+      contractName: 'Rewarder',
+      contractAddress: rewarderDeployment.address,
+      constructorArguments: [tokenVault, tokenAddress],
+      proxyVerification: false,
     });
 
     console.log(
